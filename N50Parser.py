@@ -2,87 +2,65 @@ from collections import OrderedDict
 import argparse
 
 # create specific object
-parser = argparse.ArgumentParser(description = "N50 parser")
-
-#parser = argparse.ArgumentParser(prog="N50Parser.py", usage="N50")
-
-
-
-
-
-
-
+parser = argparse.ArgumentParser(description="N50 parser")
 parser.add_argument("-i", "--input", action="store", dest="input", required=True,
                     help="Input file with sequences")
 parser.add_argument("-o", "--output", action="store", dest="output",
                     help="output file")
 parser.add_argument("-o2", "--output2", action="store", dest="output2",
                     help="output file")
-
-
 args = parser.parse_args()
 
 
-
 def read_file(fasta_file):
-    "Parse fasta file"
-    descriptiondict = OrderedDict()
-    dictionnary = OrderedDict()
+    """Parse fasta file and return sequence and description dicts"""
+    seq_dict = OrderedDict()
+    desc_dict = OrderedDict()
     with open(fasta_file, 'r') as infile:
+        seq_id = None
+        seq = []
+        desc = ''
         for line in infile:
-            record = line.strip()
-            if record and record[0] == '>':
-                seqid = record.split(" ")[0][1:]
-                dictionnary[seqid] = ""
-                description = record.split(" ", 1)[1]
-                descriptiondict[seqid] = description
-                continue
-            dictionnary[seqid] += record
-
-    return dictionnary, descriptiondict
-
-
-
-seqdict, descriptdict = read_file(args.input)
-#print(seqdict[seqid])
-
-
-lengthdict = OrderedDict()
-for sequenceid in seqdict:
-    lengthdict[sequenceid] = len(seqdict[sequenceid])
+            line = line.strip()
+            if line.startswith('>'):
+                if seq_id is not None:
+                    seq_dict[seq_id] = ''.join(seq)
+                    desc_dict[seq_id] = desc
+                seq_id = line[1:].split()[0]
+                seq.clear()
+                desc = line[1:].split(maxsplit=1)[1] if ' ' in line else ''
+            else:
+                seq.append(line)
+        if seq_id is not None:
+            seq_dict[seq_id] = ''.join(seq)
+            desc_dict[seq_id] = desc
+    return seq_dict, desc_dict
 
 
-length = sum(lengthdict.values())
+def calc_n50(length_dict):
+    """Calculate N50 from the lengths of sequences"""
+    lengths = sorted(length_dict.values(), reverse=True)
+    total_length = sum(lengths)
+    half_length = total_length // 2
+    cum_length = 0
+    for i, length in enumerate(lengths):
+        cum_length += length
+        if cum_length >= half_length:
+            return i+1, length
 
 
-N_number = sum([seqdict[seqid].count("N") for seqid in seqdict])
+# Parse input file
+seq_dict, desc_dict = read_file(args.input)
 
-print(N_number)
-print(length)
-all_len = sorted(lengthdict.values(), reverse=True)
-print(all_len)
+# Calculate sequence lengths
+length_dict = {seq_id: len(seq) for seq_id, seq in seq_dict.items()}
 
-if length > 0:
-    acum = 0
+# Calculate N50
+n50, n50_length = calc_n50(length_dict)
 
-    for y in range (len(all_len)):
-        if acum <= length / 2:
-            acum = all_len[y] + acum
-            n = y #L50
-        else:
-            break
-
-
-    n = n + 1
-    print("The L50 is", n)
-    print("The N50 is", all_len[n-1])
-
-with open(args.output, 'w') as outfile:
-    outfile.write("L50\t{}\n".format(n))
-    outfile.write("N50\t{}\n".format(all_len[n-1]))
-
-
-with open(args.output2, "w") as file:
-    for key, value in lengthdict.items():
-        file.write(f"{key} : {value}\n")
-
+# Write output files
+with open(args.output, 'w') as outfile, open(args.output2, 'w') as outfile2:
+    outfile.write("L50\t{}\n".format(n50))
+    outfile.write("N50\t{}\n".format(n50_length))
+    for seq_id, length in length_dict.items():
+        outfile2.write(f"{seq_id} : {length}\n")
